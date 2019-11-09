@@ -1,0 +1,82 @@
+pipeline {
+	agent any
+	
+	stages {
+		stage('Install') {
+			steps {
+				sh '''
+					cd flask
+					sudo /usr/local/bin/pip install -r requirements.txt
+				'''
+			}
+		}
+
+		stage('Test') { 
+			steps { 
+				sh '''
+					cd flask
+					docker build -f Dockerfile.test -t test/flask:${BUILD_NUMBER} .
+				'''
+			}
+		}
+
+		stage('Build') {
+			when { branch 'flask' }
+			steps { 
+				sh '''
+					cd flask
+					docker build -t waynewong/flask:${BUILD_NUMBER} .
+				'''
+			}
+		}
+
+		stage('Push') {
+			when { branch 'flask' }
+			steps {
+				withDockerRegistry([ credentialsId: "dockerhub", url: "" ]) {
+					sh 'docker push waynewong/flask:${BUILD_NUMBER}'
+				}
+			}
+		}
+
+		stage('Deploy to DEV') {
+			when { branch 'flask' }
+			steps {
+				sh '''
+					cd helm/apps/dev
+					sudo /usr/local/bin/helm upgrade --install flask-dev flask/ --namespace dev --set image.tag=${BUILD_NUMBER}
+				'''
+			}
+		}
+
+		stage('Deploy to QA') {
+			when { branch 'flask' }
+			steps {
+				sh '''
+					cd helm/apps/qa
+					sudo /usr/local/bin/helm upgrade --install flask-qa flask/ --namespace qa --set image.tag=${BUILD_NUMBER}
+				'''
+			}
+		}
+
+		stage('Deploy to UAT') {
+			when { branch 'flask' }
+			steps {
+				sh '''
+					cd helm/apps/uat
+					sudo /usr/local/bin/helm upgrade --install flask-uat flask/ --namespace uat --set image.tag=${BUILD_NUMBER}
+				'''
+			}
+		}
+
+		stage('Deploy to Prod') {
+			when { branch 'flask' }
+			steps {
+				sh '''
+					cd helm/apps/prod
+					sudo /usr/local/bin/helm upgrade --install flask-prod flask/ --namespace prod --set image.tag=${BUILD_NUMBER}
+				'''
+			}
+		}
+	}
+}
